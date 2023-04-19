@@ -14,7 +14,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.0"
+CURRENT_VERSION = "v1.1.1"
 
 # 원격 서버의 API 주소
 #API_URL = "https://example.com/api/check_update"
@@ -33,11 +33,7 @@ def check_and_update():
         if reply == QMessageBox.Yes:
             download_and_install_update(latest_version, download_url)
     else:
-        msgBox = QMessageBox()
-        msgBox.setIcon(QMessageBox.Information)
-        msgBox.setWindowTitle("업데이트 확인")
-        msgBox.setText("최신 버전을 사용 중입니다.")
-        msgBox.exec_()        
+        print("최신 버전을 사용 중입니다.")      
 
 def check_update():
     try:
@@ -45,15 +41,31 @@ def check_update():
         response.raise_for_status()
         data = response.json()
         latest_version = data["tag_name"]        
-        print("lasted version ", latest_version)
-        print("current version ", CURRENT_VERSION)
         if version.parse(latest_version) > version.parse(CURRENT_VERSION):           
-            return latest_version, data["assets"][0]["browser_download_url"]
+            print("lasted version ", latest_version)
+            print("current version ", CURRENT_VERSION)            
+            # 올바른 ZIP 파일을 가리키는 다운로드 URL을 반환
+            download_url = None
+            for asset in data["assets"]:
+                if asset["name"].endswith(".zip"):
+                    download_url = asset["browser_download_url"]
+                    break            
+            if download_url:
+                return latest_version, download_url
+            else:
+                raise Exception("No ZIP file found in the release assets.")                                    
+            #return latest_version, data["assets"][0]["browser_download_url"]
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Warning)        
         msgBox.setWindowTitle("실패")
         msgBox.setText("업데이트 확인에 실패했습니다.")
+        msgBox.exec_()
+    except Exception as e:
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Warning)        
+        msgBox.setWindowTitle("실패")
+        msgBox.setText(str(e))
         msgBox.exec_()
     return None, None
 
@@ -65,6 +77,13 @@ def download_and_install_update(latest_version, download_url):
         with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
             for chunk in response.iter_content(chunk_size=8192):
                 tmp_file.write(chunk)
+
+        # 다운로드한 파일이 실제 ZIP 파일인지 확인하세요.
+        with open(tmp_file.name, "rb") as f:
+            file_signature = f.read(4)
+        if file_signature != b'\x50\x4b\x03\x04':  # ZIP 파일의 시그니처 (PK\03\04)와 비교
+            raise zipfile.BadZipFile("File is not a zip file")
+
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
             zip_ref.extractall(os.path.dirname(sys.executable))
         os.unlink(tmp_file.name)
@@ -80,6 +99,7 @@ def download_and_install_update(latest_version, download_url):
         msgBox.setText("업데이트 다운로드에 실패했습니다.")
         msgBox.exec_()
 
+# 로고 표시를 위한 함수
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
@@ -94,21 +114,7 @@ class MyApp(QMainWindow):
     def initUI(self):
 
         check_and_update()
-        latest_version, download_url = check_update()
 
-        if latest_version:
-            msgBox = QMessageBox()
-            msgBox.setIcon(QMessageBox.Warning)        
-            msgBox.setWindowTitle("업데이트")
-            msgBox.setText(f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행합니다.")
-            msgBox.exec_()
-            download_and_install_update(latest_version, download_url)
-        else:
-            msgBox = QMessageBox()
-            msgBox.setIcon(QMessageBox.Information)        
-            msgBox.setWindowTitle("업데이트 확인")
-            msgBox.setText("최신 버전을 사용 중입니다.")
-            msgBox.exec_()
         #아이콘
         myIcon = resource_path('logo.ico')
         self.setWindowIcon(QIcon(myIcon))
