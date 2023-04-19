@@ -14,7 +14,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.1"
+CURRENT_VERSION = "v1.1.2"
 
 # 원격 서버의 API 주소
 #API_URL = "https://example.com/api/check_update"
