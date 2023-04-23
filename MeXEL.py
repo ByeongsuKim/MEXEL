@@ -2,11 +2,12 @@
 # 폴더 내 파일 읽기 시 필요: os
 import sys, os, fnmatch, requests, zipfile, tempfile, subprocess
 import pandas as pd
+import ctypes
 from packaging import version
 from datetime import datetime
-from PyQt5.QtWidgets import QGroupBox, QMessageBox, QApplication, QMainWindow, QWidget, QPushButton, QVBoxLayout, QFileDialog, QToolTip, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel, QSizePolicy, QComboBox
+from PyQt5.QtWidgets import QGroupBox, QMessageBox, QApplication, QMainWindow, QWidget, QPushButton, QVBoxLayout, QFileDialog, QToolTip, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel, QSizePolicy, QComboBox, QProgressBar
 from PyQt5.QtGui import QFont, QIcon
-from PyQt5.QtCore import Qt, QTimer, pyqtSlot
+from PyQt5.QtCore import Qt, QTimer, pyqtSlot, QThread, pyqtSignal
 from PyQt5 import QtWidgets, QtCore
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
@@ -14,7 +15,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.4"
+CURRENT_VERSION = "v1.1.5"
 
 # 원격 서버의 API 주소
 #API_URL = "https://example.com/api/check_update"
@@ -26,14 +27,10 @@ GITHUB_API_URL = "https://api.github.com/repos/ByeongsuKim/MeXEL/releases/latest
 def check_and_update():
     latest_version, download_url = check_update()
     if latest_version:
-        reply = QMessageBox.question(None, "업데이트 확인",
-                                     f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행하시겠습니까?",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-
-        if reply == QMessageBox.Yes:
-            download_and_install_update(latest_version, download_url)
+        return latest_version, download_url
     else:
-        print("최신 버전을 사용 중입니다.")      
+        return False
+        #print("최신 버전을 사용 중입니다.")      
 
 def check_update():
     try:
@@ -42,8 +39,8 @@ def check_update():
         data = response.json()
         latest_version = data["tag_name"]        
         if version.parse(latest_version) > version.parse(CURRENT_VERSION):           
-            print("lasted version ", latest_version)
-            print("current version ", CURRENT_VERSION)            
+            #print("lasted version ", latest_version)
+            #print("current version ", CURRENT_VERSION)            
             # 올바른 ZIP 파일을 가리키는 다운로드 URL을 반환
             download_url = None
             for asset in data["assets"]:
@@ -84,13 +81,15 @@ def download_and_install_update(latest_version, download_url):
         if file_signature != b'\x50\x4b\x03\x04':  # ZIP 파일의 시그니처 (PK\03\04)와 비교
             raise zipfile.BadZipFile("File is not a zip file")
 
+        # Extract to a different folder
+        extraction_path = os.path.join(os.path.dirname(sys.executable), "update")
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
-            zip_ref.extractall(os.path.dirname(sys.executable))
+            zip_ref.extractall(extraction_path)
         os.unlink(tmp_file.name)
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Information)        
         msgBox.setWindowTitle("성공")
-        msgBox.setText(f"새 버전 {latest_version}이 설치되었습니다. 앱을 재시작해주세요.")
+        msgBox.setText(f"새 버전 {latest_version}이(가) update 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
         msgBox.exec_()
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
@@ -105,16 +104,37 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
+'''
+class DownloadThread(QThread):
+    progress = pyqtSignal(int)
+
+    def __init__(self, url):
+        super().__init__()
+        self.url = url
+'''
+    
+
+
 class MyApp(QMainWindow):
 
     def __init__(self):
-        super().__init__()
-        self.initUI()
+        # Check if the program is running with admin privileges
+        latest_version, download_url = check_and_update()
+        if latest_version:
+            if not ctypes.windll.shell32.IsUserAnAdmin():
+                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
+                sys.exit(0)
+            super().__init__()
+            self.initUI()
+            reply = QMessageBox.question(None, "업데이트 확인", f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행하시겠습니까? (30초 예상)",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+            if reply == QMessageBox.Yes:
+                download_and_install_update(latest_version, download_url)
+        else:
+            super().__init__()
+            self.initUI()
 
     def initUI(self):
-
-        check_and_update()
-
         #아이콘
         myIcon = resource_path('logo.ico')
         self.setWindowIcon(QIcon(myIcon))
@@ -141,7 +161,7 @@ class MyApp(QMainWindow):
         self.btn_remove = []
 
 
-        print("MergeInfo : ", self.mergeInfo)        
+        #print("MergeInfo : ", self.mergeInfo)        
 
         #툴팁 폰트 설정
         QToolTip.setFont(QFont('malgun', 10))
@@ -261,11 +281,11 @@ class MyApp(QMainWindow):
         self.setGeometry(300, 300, 350, 400)
         self.show()
 
-
-    def check_version():
-        curr
-
-
+    # 셀에 데이터가 있는지 확인
+    def has_data(self, cell):
+        if cell is None or cell.value is None or str(cell.value).strip() == '':
+            return False
+        return True
 
     def addArea(self):
         if len(self.mergeInfo) > 19:
@@ -295,7 +315,7 @@ class MyApp(QMainWindow):
             self.scrollAreaWidgetLayout.insertWidget(count, groupBox)
 
             #그룹박스 - 삭제 버튼
-            print("UID : ", self.UID)
+            #print("UID : ", self.UID)
             btn =  QPushButton(self)
             btn.setText('제거')
             btn.id = self.UID
@@ -332,7 +352,7 @@ class MyApp(QMainWindow):
         fileList = []
         if pathDir:
             fileList = [os.path.join(pathDir, file) for file in os.listdir(pathDir) if any(fnmatch.fnmatch(file, ext) for ext in extensions)]
-            print(fileList)
+            #print(fileList)
             self.statusBar().showMessage(f'{len(fileList)}개의 엑셀 파일을 찾았습니다.')    
         else:
             self.statusBar().showMessage('폴더를 선택해주세요.')
@@ -344,8 +364,8 @@ class MyApp(QMainWindow):
         https://ymt-lab.com/en/post/2021/pyqt5-delete-widget-test/
 
         '''
-        print(index)
-        print(self.mergeInfo)
+        #print(index)
+        #print(self.mergeInfo)
         #순서를 의미하는 것이므로.   
         targetNo = -1
         for i in range(len(self.mergeInfo)):
@@ -357,7 +377,7 @@ class MyApp(QMainWindow):
         for i in range(len(self.mergeInfo)):
             self.mergeInfo[i][1] = i
         self.ORDER = self.ORDER-1
-        print("reMergeInfo :", self.mergeInfo)
+        #print("reMergeInfo :", self.mergeInfo)
         item = self.scrollAreaWidgetLayout.itemAt(targetNo)        
         widget = item.widget()
         widget.deleteLater()
@@ -415,15 +435,16 @@ class MyApp(QMainWindow):
 
 
                 for row in range(srow, erow+1):
-                    row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
-                    print('\t'.join(str(cell) for cell in row_data))
-                    merged_data.append(row_data)
-                    #여기에러df.append(pd.Series(row_data, index=df.columns), ignore_index=True)
-                    # 참고: https://emilkwak.github.io/dataframe-list-row-append-ignore-index
-                    #다른 방법으로 해결가능: 엑셀 열고 각 행 해당 시트에 계속 누적.
+                    row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1) if self.has_data(ws.cell(row, col))]
+                    if row_data:
+                        #print('\t'.join(str(cell) for cell in row_data))
+                        merged_data.append(row_data)
+                        #여기에러df.append(pd.Series(row_data, index=df.columns), ignore_index=True)
+                        # 참고: https://emilkwak.github.io/dataframe-list-row-append-ignore-index
+                        #다른 방법으로 해결가능: 엑셀 열고 각 행 해당 시트에 계속 누적.
             #모든 루프가 다 돌면 merged_data에 모든 엑셀 파일의 특정 시트와 행 누적된 상태
-            print("-------------------------")    
-            print(merged_data)          
+            #print("-------------------------")    
+            #print(merged_data)          
             newDf = pd.DataFrame(merged_data)
             newSht = newWb.create_sheet("Sheet"+str(sheetno+1)+"_"+str(extr[0]))
             for r in dataframe_to_rows(newDf, index=False, header=False):
