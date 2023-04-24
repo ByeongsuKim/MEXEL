@@ -27,11 +27,14 @@ GITHUB_API_URL = "https://api.github.com/repos/ByeongsuKim/MeXEL/releases/latest
 def check_and_update():
     latest_version, download_url = check_update()
     if latest_version:
+        reply = QMessageBox.question(None, "업데이트 확인", f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행하시겠습니까? (30초 예상)",
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.Yes:
+            download_and_install_update(latest_version, download_url)
         return latest_version, download_url
     else:
-        return False
-        #print("최신 버전을 사용 중입니다.")      
-
+        return None    
+    
 def check_update():
     try:
         response = requests.get(GITHUB_API_URL)
@@ -82,14 +85,14 @@ def download_and_install_update(latest_version, download_url):
             raise zipfile.BadZipFile("File is not a zip file")
 
         # Extract to a different folder
-        extraction_path = os.path.join(os.path.dirname(sys.executable), "update")
+        extraction_path = os.path.join(os.path.dirname(sys.executable), "Update")
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
             zip_ref.extractall(extraction_path)
         os.unlink(tmp_file.name)
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Information)        
         msgBox.setWindowTitle("성공")
-        msgBox.setText(f"새 버전 {latest_version}이(가) update 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
+        msgBox.setText(f"새 버전 {latest_version}이(가) Update 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
         msgBox.exec_()
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
@@ -104,37 +107,18 @@ def resource_path(relative_path):
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
 
-'''
-class DownloadThread(QThread):
-    progress = pyqtSignal(int)
-
-    def __init__(self, url):
-        super().__init__()
-        self.url = url
-'''
-    
-
 
 class MyApp(QMainWindow):
 
     def __init__(self):
-        # Check if the program is running with admin privileges
-        latest_version, download_url = check_and_update()
-        if latest_version:
-            if not ctypes.windll.shell32.IsUserAnAdmin():
-                ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-                sys.exit(0)
-            super().__init__()
-            self.initUI()
-            reply = QMessageBox.question(None, "업데이트 확인", f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행하시겠습니까? (30초 예상)",
-                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-            if reply == QMessageBox.Yes:
-                download_and_install_update(latest_version, download_url)
-        else:
-            super().__init__()
-            self.initUI()
+        super().__init__()
+        self.initUI()        
 
     def initUI(self):
+
+        #업데이트 확인
+        check_and_update()
+
         #아이콘
         myIcon = resource_path('logo.ico')
         self.setWindowIcon(QIcon(myIcon))
