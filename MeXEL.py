@@ -3,6 +3,7 @@
 import sys, os, fnmatch, requests, zipfile, tempfile, subprocess
 import pandas as pd
 import ctypes
+import shutil
 from packaging import version
 from datetime import datetime
 from PyQt5.QtWidgets import QGroupBox, QMessageBox, QApplication, QMainWindow, QWidget, QPushButton, QVBoxLayout, QFileDialog, QToolTip, QHBoxLayout, QVBoxLayout, QLineEdit, QLabel, QSizePolicy, QComboBox, QProgressBar
@@ -15,7 +16,7 @@ from openpyxl.utils.dataframe import dataframe_to_rows
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.5"
+CURRENT_VERSION = "v1.1.6"
 
 # 원격 서버의 API 주소
 #API_URL = "https://example.com/api/check_update"
@@ -84,16 +85,23 @@ def download_and_install_update(latest_version, download_url):
         if file_signature != b'\x50\x4b\x03\x04':  # ZIP 파일의 시그니처 (PK\03\04)와 비교
             raise zipfile.BadZipFile("File is not a zip file")
 
-        # Extract to a different folder
-        extraction_path = os.path.join(os.path.dirname(sys.executable), "Update")
+        # 현재 이 프로그램과 동일한 폴더안에 압축 풀기
+        extraction_path = os.path.dirname(os.path.realpath(__file__))
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
             zip_ref.extractall(extraction_path)
+        # 임시 파일을 삭제하기(zip->exe)    
         os.unlink(tmp_file.name)
+        
+        # 성공 알리기
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Information)        
         msgBox.setWindowTitle("성공")
         msgBox.setText(f"새 버전 {latest_version}이(가) Update 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
         msgBox.exec_()
+
+        # 이 버전 끝내기
+        sys.exit(0)
+
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Warning)        
@@ -265,11 +273,13 @@ class MyApp(QMainWindow):
         self.setGeometry(300, 300, 350, 400)
         self.show()
 
+    '''
     # 셀에 데이터가 있는지 확인
     def has_data(self, cell):
         if cell is None or cell.value is None or str(cell.value).strip() == '':
             return False
         return True
+    '''
 
     def addArea(self):
         if len(self.mergeInfo) > 19:
@@ -331,7 +341,7 @@ class MyApp(QMainWindow):
         global pathDir
         pathDir = QFileDialog.getExistingDirectory()
         self.textbox.setText(pathDir)
-        extensions = ('*.xlsx', '*.xlsm', '*.xlsb', '*.csv')
+        extensions = ('*.xlsx', '*.xls', '*.xlsm', '*.xlsb', '*.csv')
         global fileList
         fileList = []
         if pathDir:
@@ -412,14 +422,24 @@ class MyApp(QMainWindow):
                     return
                 if(str(extr[4])=='데이터 끝'):
                     erow = ws.max_row
+                    #서식은 있고 데이터가 없는 셀도 데이터 끝에 해당하는 것을 막기위해 부분
+                    for row in reversed(range(srow, erow+1)):
+                        row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
+                        print(row)
+                        if not all(val is None for val in row_data):
+                            erow = row
+                            print("last row :",erow)
+                            break
                     if (erow<srow):
                         erow=srow
                 else:
                     erow = extr[4]
 
 
+
                 for row in range(srow, erow+1):
-                    row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1) if self.has_data(ws.cell(row, col))]
+                    #row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1) if self.has_data(ws.cell(row, col))]
+                    row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
                     if row_data:
                         #print('\t'.join(str(cell) for cell in row_data))
                         merged_data.append(row_data)
