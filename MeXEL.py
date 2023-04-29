@@ -2,6 +2,7 @@
 # 폴더 내 파일 읽기 시 필요: os
 import sys, os, fnmatch, requests, zipfile, tempfile, subprocess
 import pandas as pd
+import xlrd
 import ctypes
 import shutil
 from packaging import version
@@ -13,10 +14,14 @@ from PyQt5 import QtWidgets, QtCore
 from openpyxl import load_workbook, Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.utils.dataframe import dataframe_to_rows
+from tqdm import tqdm
 
 
 # 앱의 현재 버전 정보
 CURRENT_VERSION = "v1.1.6"
+
+#상태파악 True: 실행,, False: 종료되어야 함.
+STATE = True
 
 # 원격 서버의 API 주소
 #API_URL = "https://example.com/api/check_update"
@@ -34,6 +39,7 @@ def check_and_update():
             download_and_install_update(latest_version, download_url)
         return latest_version, download_url
     else:
+        # 업데이트가 없을 경우 그냥 넘어감
         return None    
     
 def check_update():
@@ -70,7 +76,7 @@ def check_update():
         msgBox.exec_()
     return None, None
 
-
+'''
 def download_and_install_update(latest_version, download_url):
     try:
         response = requests.get(download_url, stream=True)
@@ -100,6 +106,50 @@ def download_and_install_update(latest_version, download_url):
         msgBox.exec_()
 
         # 이 버전 끝내기
+        STATE = False
+        sys.exit(0)
+
+    except requests.exceptions.RequestException:
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Warning)        
+        msgBox.setWindowTitle("실패")
+        msgBox.setText("업데이트 다운로드에 실패했습니다.")
+        msgBox.exec_()
+'''
+def download_and_install_update(latest_version, download_url):
+    try:
+        response = requests.get(download_url, stream=True)
+        response.raise_for_status()
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
+            total_size_in_bytes = int(response.headers.get('content-length', 0))
+            progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
+            for chunk in response.iter_content(chunk_size=8192):
+                progress_bar.update(len(chunk))
+                tmp_file.write(chunk)
+            progress_bar.close()
+
+        # 다운로드한 파일이 실제 ZIP 파일인지 확인하세요.
+        with open(tmp_file.name, "rb") as f:
+            file_signature = f.read(4)
+        if file_signature != b'\x50\x4b\x03\x04':  # ZIP 파일의 시그니처 (PK\03\04)와 비교
+            raise zipfile.BadZipFile("File is not a zip file")
+
+        # 현재 이 프로그램과 동일한 폴더안에 압축 풀기
+        extraction_path = os.path.dirname(os.path.realpath(__file__))
+        with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
+            zip_ref.extractall(extraction_path)
+        # 임시 파일을 삭제하기(zip->exe)    
+        os.unlink(tmp_file.name)
+        
+        # 성공 알리기
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Information)        
+        msgBox.setWindowTitle("성공")
+        msgBox.setText(f"새 버전 {latest_version}이(가) 동일 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
+        msgBox.exec_()
+
+        # 이 버전 끝내기
+        STATE = False
         sys.exit(0)
 
     except requests.exceptions.RequestException:
@@ -109,11 +159,14 @@ def download_and_install_update(latest_version, download_url):
         msgBox.setText("업데이트 다운로드에 실패했습니다.")
         msgBox.exec_()
 
+
+
 # 로고 표시를 위한 함수
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(base_path, relative_path)
+
 
 
 class MyApp(QMainWindow):
@@ -341,7 +394,7 @@ class MyApp(QMainWindow):
         global pathDir
         pathDir = QFileDialog.getExistingDirectory()
         self.textbox.setText(pathDir)
-        extensions = ('*.xlsx', '*.xls', '*.xlsm', '*.xlsb', '*.csv')
+        extensions = ('*.xlsx','*.xlsm', '*.xlsb', '*.xls')
         global fileList
         fileList = []
         if pathDir:
@@ -376,6 +429,26 @@ class MyApp(QMainWindow):
         widget = item.widget()
         widget.deleteLater()
 
+
+    def load_xls_file(self, file, sheetno):
+        wb = xlrd.open_workbook(file)
+        try:
+            ws = wb.sheet_by_index(sheetno)
+        except Exception as e:
+            msgBox = QMessageBox()
+            msgBox.setIcon(QMessageBox.Warning)
+            index_slash = file.index("\\")
+            shortFname = file[index_slash+1:]
+            msgBox.setWindowTitle("Error merging sheets")
+            msgBox.setText(f"Stop merging because there is no sheet number {sheetno+1} in {shortFname}.")
+            msgBox.exec_()
+            # Change to 'Ready' after 7 seconds
+            QTimer.singleShot(5000, lambda: self.statusBar().showMessage('ready status'))
+            self.statusBar().showMessage(f'Error reading sheet: {e}')
+            return None
+        return ws
+
+
     def mergeExcel(self):       
         if not self.textbox.text(): # 텍스트박스에 값이 없는 경우
             self.statusBar().showMessage('폴더를 먼저 선택해주세요.')
@@ -403,11 +476,17 @@ class MyApp(QMainWindow):
             #merged_data에 각 파일의 해당 시트, 행을 누적함
             merged_data = []
             for file in fileList:
-                #print(i, " - ", extr)
-                #print(file)
-                wb = load_workbook(file)
+                # 파일 확장명(파일 유형)에 따라 wb에 불러들이는 방식을 다르게
+                ext = os.path.splitext(file)[1].lower()
                 try:
-                    ws = wb.worksheets[sheetno]
+                    if ext in ['.xlsx', '.xlsm', '.xlsb']:
+                        wb = load_workbook(file)
+                        ws = wb.worksheets[sheetno]
+                    elif ext in ['.xls']:
+                        wb = xlrd.open_workbook(file)
+                        ws = wb.sheet_by_index(sheetno)
+                        if ws is None:
+                            continue
                 except Exception as e:
                     msgBox = QMessageBox()
                     msgBox.setIcon(QMessageBox.Warning)
@@ -421,34 +500,51 @@ class MyApp(QMainWindow):
                     self.statusBar().showMessage(f'시트 읽기 중 오류:  {e}')
                     return
                 if(str(extr[4])=='데이터 끝'):
-                    erow = ws.max_row
+                    if ext in ['.xlsx', '.xlsm', '.xlsb']:
+                        erow = ws.max_row
+                    elif ext in ['.xls']:
+                        erow = ws.nrows
                     #서식은 있고 데이터가 없는 셀도 데이터 끝에 해당하는 것을 막기위해 부분
-                    for row in reversed(range(srow, erow+1)):
-                        row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
-                        print(row)
-                        if not all(val is None for val in row_data):
-                            erow = row
-                            print("last row :",erow)
-                            break
+                    #거꾸로 거슬러올라가면서 데이터 체크함
+                        if ext in ['.xlsx', '.xlsm', '.xlsb']:
+                            for row in reversed(range(srow, erow+1)):
+                                row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
+                                #아래 반복문 안의 조건문과 동일
+                                if not all(val is None for val in row_data):
+                                    erow = row
+                                    print("last row :",erow)
+                                    break
+                        elif ext in ['.xls']:
+                            print(file)
+                            for row in tqdm(reversed(range(srow, erow+1))):
+                                print("row : ", row)
+                                #print("col : ", col)
+                                row_data = [ws.cell_value(row, col) for col in range(ws.ncols+1)]
+                                #위의 반복문 안의 조건문과 동일
+                                if not all(val is None for val in row_data):
+                                    erow = row
+                                    print("last row :",erow)
+                                    break
+                        else:
+                            print(file)
+                        print(file)
                     if (erow<srow):
                         erow=srow
                 else:
                     erow = extr[4]
 
-
-
+                # 시작~마지막 행 데이터 합치기
                 for row in range(srow, erow+1):
-                    #row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1) if self.has_data(ws.cell(row, col))]
-                    row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
+                    if ext in ['.xls']:
+                        row_data = [ws.cell(row, col).value for col in range(1, ws.ncols+1)]
+                    else:
+                        row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
                     if row_data:
-                        #print('\t'.join(str(cell) for cell in row_data))
                         merged_data.append(row_data)
                         #여기에러df.append(pd.Series(row_data, index=df.columns), ignore_index=True)
                         # 참고: https://emilkwak.github.io/dataframe-list-row-append-ignore-index
                         #다른 방법으로 해결가능: 엑셀 열고 각 행 해당 시트에 계속 누적.
             #모든 루프가 다 돌면 merged_data에 모든 엑셀 파일의 특정 시트와 행 누적된 상태
-            #print("-------------------------")    
-            #print(merged_data)          
             newDf = pd.DataFrame(merged_data)
             newSht = newWb.create_sheet("Sheet"+str(sheetno+1)+"_"+str(extr[0]))
             for r in dataframe_to_rows(newDf, index=False, header=False):
@@ -476,8 +572,9 @@ class MyApp(QMainWindow):
 if __name__ == '__main__':
    app = QApplication(sys.argv)
    ex = MyApp()
-   ex.setGeometry(100, 100, 500, 400)
-   sys.exit(app.exec_())
+   if STATE:
+    ex.setGeometry(100, 100, 500, 400)
+    sys.exit(app.exec_())
 
 #
 # 실행파일 만들기
