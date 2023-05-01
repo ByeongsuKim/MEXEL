@@ -32,7 +32,17 @@ GITHUB_API_URL = "https://api.github.com/repos/ByeongsuKim/MeXEL/releases/latest
 
 def check_and_update():
     latest_version, download_url = check_update()
-    if latest_version:
+    # 최신버전 확인하고 싶지 않은 경우
+    if latest_version==0:
+        return
+    # 버전 확인했으나 본 프로그램이 최신 버전인 경우
+    elif latest_version==-1:
+        msgBox = QMessageBox()
+        msgBox.setIcon(QMessageBox.Information)        
+        msgBox.setWindowTitle("최신 버전 사용 중")
+        msgBox.setText("최신 버전 사용 중입니다.")
+        msgBox.exec_()
+    elif latest_version:
         reply = QMessageBox.question(None, "업데이트 확인", f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행하시겠습니까? (30초 예상)",
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes:
@@ -44,6 +54,9 @@ def check_and_update():
     
 def check_update():
     try:
+        reply = QMessageBox.question(None, "최신버전 확인", f"최신 버전을 확인하시겠습니까?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
+        if reply == QMessageBox.No:
+            return 0, "none"        
         response = requests.get(GITHUB_API_URL)
         response.raise_for_status()
         data = response.json()
@@ -62,6 +75,8 @@ def check_update():
             else:
                 raise Exception("No ZIP file found in the release assets.")                                    
             #return latest_version, data["assets"][0]["browser_download_url"]
+        else:
+            return -1, "최신 버전을 사용하고 있습니다."
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Warning)        
@@ -398,9 +413,12 @@ class MyApp(QMainWindow):
         global fileList
         fileList = []
         if pathDir:
-            fileList = [os.path.join(pathDir, file) for file in os.listdir(pathDir) if any(fnmatch.fnmatch(file, ext) for ext in extensions)]
-            #print(fileList)
-            self.statusBar().showMessage(f'{len(fileList)}개의 엑셀 파일을 찾았습니다.')    
+            #fileList = [os.path.join(pathDir, file) for file in os.listdir(pathDir) if any(fnmatch.fnmatch(file, ext) for ext in extensions)]
+            #fileList = [os.path.join(pathDir, file) for file in os.listdir(pathDir) if not file.startswith('.') and os.access(os.path.join(pathDir, file), os.R_OK) and any(fnmatch.fnmatch(file, ext) for ext in extensions)]
+            #숨겨져 있거나 읽기가 불가능한 파일, '~$'로 시작하는 파일은 제외하여 불러오기
+            fileList = [os.path.join(pathDir, file) for file in os.listdir(pathDir) if not file.startswith('.') and not file.startswith('~$') and os.access(os.path.join(pathDir, file), os.R_OK) and any(fnmatch.fnmatch(file, ext) for ext in extensions)]
+            self.statusBar().showMessage(f'{len(fileList)}개의 엑셀 파일을 찾았습니다.')  
+
         else:
             self.statusBar().showMessage('폴더를 선택해주세요.')
 
@@ -506,41 +524,42 @@ class MyApp(QMainWindow):
                         erow = ws.nrows
                     #서식은 있고 데이터가 없는 셀도 데이터 끝에 해당하는 것을 막기위해 부분
                     #거꾸로 거슬러올라가면서 데이터 체크함
-                        if ext in ['.xlsx', '.xlsm', '.xlsb']:
-                            for row in reversed(range(srow, erow+1)):
-                                row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
-                                #아래 반복문 안의 조건문과 동일
-                                if not all(val is None for val in row_data):
-                                    erow = row
-                                    print("last row :",erow)
-                                    break
-                        elif ext in ['.xls']:
-                            print(file)
-                            for row in tqdm(reversed(range(srow, erow+1))):
-                                print("row : ", row)
-                                #print("col : ", col)
-                                row_data = [ws.cell_value(row, col) for col in range(ws.ncols+1)]
-                                #위의 반복문 안의 조건문과 동일
-                                if not all(val is None for val in row_data):
-                                    erow = row
-                                    print("last row :",erow)
-                                    break
-                        else:
-                            print(file)
-                        print(file)
+                    if ext in ['.xlsx', '.xlsm', '.xlsb']:
+                        for row in reversed(range(srow, erow+1)):
+                            row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
+                            #아래 반복문 안의 조건문과 동일
+                            if not all(val is None for val in row_data):
+                                erow = row
+                                print("last row :",erow)
+                                break
+                    elif ext in ['.xls']:
+                        for row in reversed(range(srow-1, erow)):
+                            row_data = [ws.cell(row, col).value for col in range(0, ws.ncols)]
+                            #아래 반복문 안의 조건문과 동일
+                            if not all(val is None for val in row_data):
+                                erow = row
+                                print("last row :",erow)
+                                break
+                    else:
+                        print("else : ", file)
+                    print(file)
                     if (erow<srow):
                         erow=srow
                 else:
                     erow = extr[4]
 
                 # 시작~마지막 행 데이터 합치기
-                for row in range(srow, erow+1):
-                    if ext in ['.xls']:
-                        row_data = [ws.cell(row, col).value for col in range(1, ws.ncols+1)]
-                    else:
+                if ext in ['.xls']:
+                    for row in range(srow-1, erow):
+                        row_data = [ws.cell(row, col).value for col in range(0, ws.ncols)]
+                        if row_data:
+                            merged_data.append(row_data)
+                else:
+                    for row in range(srow, erow+1):
                         row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
-                    if row_data:
-                        merged_data.append(row_data)
+                        if row_data:
+                            merged_data.append(row_data)
+                    
                         #여기에러df.append(pd.Series(row_data, index=df.columns), ignore_index=True)
                         # 참고: https://emilkwak.github.io/dataframe-list-row-append-ignore-index
                         #다른 방법으로 해결가능: 엑셀 열고 각 행 해당 시트에 계속 누적.
