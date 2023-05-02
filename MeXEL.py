@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.6"
+CURRENT_VERSION = "v1.1.7"
 
 #상태파악 True: 실행,, False: 종료되어야 함.
 STATE = True
@@ -525,7 +525,7 @@ class MyApp(QMainWindow):
                     #서식은 있고 데이터가 없는 셀도 데이터 끝에 해당하는 것을 막기위해 부분
                     #거꾸로 거슬러올라가면서 데이터 체크함
                     if ext in ['.xlsx', '.xlsm', '.xlsb']:
-                        for row in reversed(range(srow, erow+1)):
+                        for row in reversed(range(srow, erow)):
                             row_data = [ws.cell(row, col).value for col in range(1, ws.max_column+1)]
                             #아래 반복문 안의 조건문과 동일
                             if not all(val is None for val in row_data):
@@ -550,7 +550,7 @@ class MyApp(QMainWindow):
 
                 # 시작~마지막 행 데이터 합치기
                 if ext in ['.xls']:
-                    for row in range(srow-1, erow):
+                    for row in range(srow-1, erow+1):
                         row_data = [ws.cell(row, col).value for col in range(0, ws.ncols)]
                         if row_data:
                             merged_data.append(row_data)
