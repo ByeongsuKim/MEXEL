@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.6"
+CURRENT_VERSION = "v1.1.9"
 
 #상태파악 True: 실행,, False: 종료되어야 함.
 STATE = True
@@ -32,17 +32,7 @@ GITHUB_API_URL = "https://api.github.com/repos/ByeongsuKim/MeXEL/releases/latest
 
 def check_and_update():
     latest_version, download_url = check_update()
-    # 최신버전 확인하고 싶지 않은 경우
-    if latest_version==0:
-        return
-    # 버전 확인했으나 본 프로그램이 최신 버전인 경우
-    elif latest_version==-1:
-        msgBox = QMessageBox()
-        msgBox.setIcon(QMessageBox.Information)        
-        msgBox.setWindowTitle("최신 버전 사용 중")
-        msgBox.setText("최신 버전 사용 중입니다.")
-        msgBox.exec_()
-    elif latest_version:
+    if latest_version:
         reply = QMessageBox.question(None, "업데이트 확인", f"새로운 버전 {latest_version}이(가) 발견되었습니다. 업데이트를 진행하시겠습니까? (30초 예상)",
                                      QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
         if reply == QMessageBox.Yes:
@@ -53,10 +43,7 @@ def check_and_update():
         return None    
     
 def check_update():
-    try:
-        reply = QMessageBox.question(None, "최신버전 확인", f"최신 버전을 확인하시겠습니까?", QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes)
-        if reply == QMessageBox.No:
-            return 0, "none"        
+    try:        
         response = requests.get(GITHUB_API_URL)
         response.raise_for_status()
         data = response.json()
@@ -75,8 +62,6 @@ def check_update():
             else:
                 raise Exception("No ZIP file found in the release assets.")                                    
             #return latest_version, data["assets"][0]["browser_download_url"]
-        else:
-            return -1, "최신 버전을 사용하고 있습니다."
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Warning)        
@@ -91,14 +76,13 @@ def check_update():
         msgBox.exec_()
     return None, None
 
-'''
 def download_and_install_update(latest_version, download_url):
     try:
         response = requests.get(download_url, stream=True)
         response.raise_for_status()
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
-            for chunk in response.iter_content(chunk_size=8192):
-                tmp_file.write(chunk)
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:            
+            for chunk in response.iter_content(chunk_size=8192):                
+                tmp_file.write(chunk)            
 
         # 다운로드한 파일이 실제 ZIP 파일인지 확인하세요.
         with open(tmp_file.name, "rb") as f:
@@ -108,8 +92,9 @@ def download_and_install_update(latest_version, download_url):
 
         # 현재 이 프로그램과 동일한 폴더안에 압축 풀기
         extraction_path = os.path.dirname(os.path.realpath(__file__))
+        print(extraction_path)
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
-            zip_ref.extractall(extraction_path)
+            zip_ref.extractall(extraction_path)            
         # 임시 파일을 삭제하기(zip->exe)    
         os.unlink(tmp_file.name)
         
@@ -117,55 +102,8 @@ def download_and_install_update(latest_version, download_url):
         msgBox = QMessageBox()
         msgBox.setIcon(QMessageBox.Information)        
         msgBox.setWindowTitle("성공")
-        msgBox.setText(f"새 버전 {latest_version}이(가) Update 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
+        msgBox.setText(f"새 버전 {latest_version}이(가) 동일 폴더에 다운로드 완료되었습니다. 이 버전을 종료하고 새로운 버전의 앱으로 재시작해주세요.")
         msgBox.exec_()
-
-        # 이 버전 끝내기
-        STATE = False
-        sys.exit(0)
-
-    except requests.exceptions.RequestException:
-        msgBox = QMessageBox()
-        msgBox.setIcon(QMessageBox.Warning)        
-        msgBox.setWindowTitle("실패")
-        msgBox.setText("업데이트 다운로드에 실패했습니다.")
-        msgBox.exec_()
-'''
-def download_and_install_update(latest_version, download_url):
-    try:
-        response = requests.get(download_url, stream=True)
-        response.raise_for_status()
-        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp_file:
-            total_size_in_bytes = int(response.headers.get('content-length', 0))
-            progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
-            for chunk in response.iter_content(chunk_size=8192):
-                progress_bar.update(len(chunk))
-                tmp_file.write(chunk)
-            progress_bar.close()
-
-        # 다운로드한 파일이 실제 ZIP 파일인지 확인하세요.
-        with open(tmp_file.name, "rb") as f:
-            file_signature = f.read(4)
-        if file_signature != b'\x50\x4b\x03\x04':  # ZIP 파일의 시그니처 (PK\03\04)와 비교
-            raise zipfile.BadZipFile("File is not a zip file")
-
-        # 현재 이 프로그램과 동일한 폴더안에 압축 풀기
-        extraction_path = os.path.dirname(os.path.realpath(__file__))
-        with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
-            zip_ref.extractall(extraction_path)
-        # 임시 파일을 삭제하기(zip->exe)    
-        os.unlink(tmp_file.name)
-        
-        # 성공 알리기
-        msgBox = QMessageBox()
-        msgBox.setIcon(QMessageBox.Information)        
-        msgBox.setWindowTitle("성공")
-        msgBox.setText(f"새 버전 {latest_version}이(가) 동일 폴더에 다운로드 완료되었습니다. 새로운 버전의 앱으로 재시작해주세요.")
-        msgBox.exec_()
-
-        # 이 버전 끝내기
-        STATE = False
-        sys.exit(0)
 
     except requests.exceptions.RequestException:
         msgBox = QMessageBox()
