@@ -488,7 +488,7 @@ class MyApp(QMainWindow):
 
                 # 시작~마지막 행 데이터 합치기
                 if ext in ['.xls']:
-                    for row in range(srow-1, erow):
+                    for row in range(srow-1, erow+1):  # xls에서는 erow까지 넣어줌. xlsx와 다르게 처리
                         row_data = [ws.cell(row, col).value for col in range(0, ws.ncols)]
                         if row_data:
                             merged_data.append(row_data)
