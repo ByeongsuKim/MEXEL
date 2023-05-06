@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.1.9"
+CURRENT_VERSION = "v1.2.0"
 
 #상태파악 True: 실행,, False: 종료되어야 함.
 STATE = True
@@ -90,12 +90,19 @@ def download_and_install_update(latest_version, download_url):
         if file_signature != b'\x50\x4b\x03\x04':  # ZIP 파일의 시그니처 (PK\03\04)와 비교
             raise zipfile.BadZipFile("File is not a zip file")
 
+        '''
         # 현재 이 프로그램과 동일한 폴더안에 압축 풀기
         extraction_path = os.path.dirname(os.path.realpath(__file__))
         print(extraction_path)
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
             zip_ref.extractall(extraction_path)            
         # 임시 파일을 삭제하기(zip->exe)    
+        os.unlink(tmp_file.name)
+        '''
+        # update 폴더에 다운로드 받기
+        extraction_path = os.path.join(os.path.dirname(sys.executable), "update")
+        with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
+            zip_ref.extractall(extraction_path)            
         os.unlink(tmp_file.name)
         
         # 성공 알리기
