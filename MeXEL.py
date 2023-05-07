@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.2.0"
+CURRENT_VERSION = "v1.2.1"
 
 #상태파악 True: 실행,, False: 종료되어야 함.
 STATE = True
