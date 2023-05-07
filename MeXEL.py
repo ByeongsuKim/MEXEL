@@ -100,7 +100,9 @@ def download_and_install_update(latest_version, download_url):
         os.unlink(tmp_file.name)
         '''
         # update 폴더에 다운로드 받기
-        extraction_path = os.path.join(os.path.dirname(sys.executable), "update")
+        #extraction_path = os.path.join(os.path.dirname(sys.executable), "update")
+        # 동일 폴더에 다운로드 받기
+        extraction_path = os.path.dirname(sys.executable)
         with zipfile.ZipFile(tmp_file.name, "r") as zip_ref:
             zip_ref.extractall(extraction_path)            
         os.unlink(tmp_file.name)
