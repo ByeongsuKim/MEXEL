@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 
 # 앱의 현재 버전 정보
-CURRENT_VERSION = "v1.2.1"
+CURRENT_VERSION = "v1.2.2"
 
 #상태파악 True: 실행,, False: 종료되어야 함.
 STATE = True
@@ -445,10 +445,10 @@ class MyApp(QMainWindow):
                 ext = os.path.splitext(file)[1].lower()
                 try:
                     if ext in ['.xlsx', '.xlsm', '.xlsb']:
-                        wb = load_workbook(file)
+                        wb = load_workbook(file, data_only=True)
                         ws = wb.worksheets[sheetno]
                     elif ext in ['.xls']:
-                        wb = xlrd.open_workbook(file)
+                        wb = xlrd.open_workbook(file, data_only=True)
                         ws = wb.sheet_by_index(sheetno)
                         if ws is None:
                             continue
